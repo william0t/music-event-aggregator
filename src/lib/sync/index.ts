@@ -43,6 +43,15 @@ async function syncTicketmaster(): Promise<SyncResult> {
   const tmEvents = await fetchTicketmasterEvents()
   console.log(`TM: fetched ${tmEvents.length} events`)
 
+  // Log unique venue names from TM to debug matching
+  const tmVenueNames = new Set<string>()
+  for (const e of tmEvents) {
+    for (const v of (e._embedded?.venues ?? [])) {
+      tmVenueNames.add(v.name)
+    }
+  }
+  console.log('TM venue names found:', Array.from(tmVenueNames).sort().join(', '))
+
   // Get all venues with TM IDs
   const { data: venues } = await supabase
     .from('venues')
