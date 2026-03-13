@@ -4,7 +4,19 @@ import { ExternalLink, MapPin, Users, ChevronRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import EventList from '@/components/events/EventList'
 import { todayISODate } from '@/lib/utils/dates'
-import type { EventWithVenue, Venue } from '@/types'
+import type { EventWithVenue } from '@/types'
+
+function deduplicateEvents(events: EventWithVenue[]): EventWithVenue[] {
+  const seen = new Map<string, EventWithVenue>()
+  for (const event of events) {
+    const key = `${event.venue_id}|${event.event_date}|${event.artist_name.toLowerCase()}`
+    const existing = seen.get(key)
+    if (!existing || (!existing.start_time && event.start_time)) {
+      seen.set(key, event)
+    }
+  }
+  return Array.from(seen.values())
+}
 
 interface VenuePageProps {
   params: Promise<{ slug: string }>
@@ -104,7 +116,7 @@ export default async function VenuePage({ params }: VenuePageProps) {
         </h2>
 
         <EventList
-          events={(events ?? []) as EventWithVenue[]}
+          events={deduplicateEvents((events ?? []) as EventWithVenue[])}
           totalCount={count ?? 0}
           currentPage={1}
           pageSize={count ?? 0}

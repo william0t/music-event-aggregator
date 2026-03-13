@@ -80,6 +80,18 @@ async function EventsContent({ searchParams }: { searchParams: SearchParams }) {
     filteredEvents = filteredEvents.filter(e => e.venues?.neighborhood === neighborhood)
   }
 
+  // Deduplicate: TM sometimes lists the same show under two venue names (e.g. "Summit Music Hall"
+  // and "Moon Room at Summit"). Keep the event with more complete data (has start_time wins).
+  const seen = new Map<string, EventWithVenue>()
+  for (const event of filteredEvents) {
+    const key = `${event.venue_id}|${event.event_date}|${event.artist_name.toLowerCase()}`
+    const existing = seen.get(key)
+    if (!existing || (!existing.start_time && event.start_time)) {
+      seen.set(key, event)
+    }
+  }
+  filteredEvents = Array.from(seen.values())
+
   const totalCount = count ?? 0
 
   return (
