@@ -47,19 +47,49 @@ async function syncTicketmaster(): Promise<SyncResult> {
   const { data: venues } = await supabase
     .from('venues')
     .select('id, name, ticketmaster_venue_id')
-    .eq('scrape_strategy', 'ticketmaster')
 
-  const venueMap = new Map<string, string>() // TM venue ID → our venue UUID
+  const venueIdMap = new Map<string, string>()   // TM venue ID → our venue UUID
+  const venueNameMap = new Map<string, string>()  // lowercased name → our venue UUID
   for (const v of (venues ?? [])) {
-    if (v.ticketmaster_venue_id) venueMap.set(v.ticketmaster_venue_id, v.id)
+    if (v.ticketmaster_venue_id) venueIdMap.set(v.ticketmaster_venue_id, v.id)
+    venueNameMap.set(v.name.toLowerCase(), v.id)
   }
+
+  // Also update TM venue IDs we discover during sync
+  const venueIdUpdates = new Map<string, string>() // our venue UUID → TM venue ID
 
   for (const tmEvent of tmEvents) {
     try {
       const tmVenues = tmEvent._embedded?.venues ?? []
-      const matchedVenueId = tmVenues
-        .map((v: { id: string; name: string }) => venueMap.get(v.id))
+
+      // 1. Try matching by TM venue ID
+      let matchedVenueId = tmVenues
+        .map((v: { id: string; name: string }) => venueIdMap.get(v.id))
         .find((id: string | undefined) => id !== undefined)
+
+      // 2. Fallback: match by venue name (fuzzy)
+      if (!matchedVenueId) {
+        for (const tmVenue of tmVenues) {
+          const tmName = tmVenue.name?.toLowerCase() ?? ''
+          // Try exact match first
+          matchedVenueId = venueNameMap.get(tmName)
+          if (!matchedVenueId) {
+            // Try partial match
+            for (const entry of Array.from(venueNameMap.entries())) {
+              const [key, id] = entry
+              if (tmName.includes(key) || key.includes(tmName)) {
+                matchedVenueId = id
+                // Save this TM venue ID so we can update it in the DB
+                if (!venueIdMap.has(tmVenue.id)) {
+                  venueIdUpdates.set(id, tmVenue.id)
+                }
+                break
+              }
+            }
+          }
+          if (matchedVenueId) break
+        }
+      }
 
       if (!matchedVenueId) {
         result.eventsSkipped++
@@ -103,6 +133,16 @@ async function syncTicketmaster(): Promise<SyncResult> {
     } catch (err) {
       result.errors.push(`TM processing error: ${String(err)}`)
     }
+  }
+
+  // Save any newly discovered TM venue IDs back to the DB
+  for (const entry of Array.from(venueIdUpdates.entries())) {
+    const [ourVenueId, tmVenueId] = entry
+    await supabase
+      .from('venues')
+      .update({ ticketmaster_venue_id: tmVenueId })
+      .eq('id', ourVenueId)
+      .is('ticketmaster_venue_id', null)
   }
 
   return result
