@@ -13,25 +13,17 @@ function getServiceClient() {
 // ─── MAIN SYNC ENTRY POINT ───────────────────────────────────────────────────
 
 export async function runFullSync(): Promise<SyncResult[]> {
-  const results: SyncResult[] = []
+  // Run both syncs in parallel to cut total time roughly in half
+  const [tmResult, bitResult] = await Promise.all([
+    syncTicketmaster().catch(err => ({
+      source: 'ticketmaster', eventsUpserted: 0, eventsSkipped: 0, errors: [String(err)],
+    })),
+    syncBandsintown().catch(err => ({
+      source: 'bandsintown', eventsUpserted: 0, eventsSkipped: 0, errors: [String(err)],
+    })),
+  ])
 
-  // 1. Ticketmaster sync
-  try {
-    const tmResult = await syncTicketmaster()
-    results.push(tmResult)
-  } catch (err) {
-    results.push({ source: 'ticketmaster', eventsUpserted: 0, eventsSkipped: 0, errors: [String(err)] })
-  }
-
-  // 2. Bandsintown sync
-  try {
-    const bitResult = await syncBandsintown()
-    results.push(bitResult)
-  } catch (err) {
-    results.push({ source: 'bandsintown', eventsUpserted: 0, eventsSkipped: 0, errors: [String(err)] })
-  }
-
-  return results
+  return [tmResult, bitResult]
 }
 
 // ─── TICKETMASTER SYNC ────────────────────────────────────────────────────────

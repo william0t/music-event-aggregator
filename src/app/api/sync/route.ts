@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { runFullSync } from '@/lib/sync'
 
+// Tell Netlify/Vercel to allow up to 5 minutes for this function
+export const maxDuration = 300
+
 export async function POST(request: NextRequest) {
   const authHeader = request.headers.get('x-sync-secret')
   if (authHeader !== process.env.SYNC_SECRET) {

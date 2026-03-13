@@ -103,7 +103,7 @@ export async function fetchAllBandsintownVenueEvents(
 
       if (!bitVenueId) {
         bitVenueId = await searchBandsintownVenue(venue.name)
-        await sleep(200) // be polite after a search call
+        await sleep(100)
       }
 
       if (!bitVenueId) {
@@ -118,7 +118,7 @@ export async function fetchAllBandsintownVenueEvents(
         results.push({ event, ourVenueId: venue.id, bitVenueId })
       }
 
-      await sleep(150)
+      await sleep(100)
     } catch (err) {
       console.error(`BIT error for venue "${venue.name}":`, err)
     }
