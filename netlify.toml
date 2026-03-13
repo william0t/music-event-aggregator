@@ -2,6 +2,11 @@
   command = "npm run build"
   publish = ".next"
 
+[build.environment]
+  # NEXT_PUBLIC_SUPABASE_ANON_KEY is intentionally public (client-side key by design)
+  # BANDSINTOWN_APP_ID is a non-secret app name string
+  SECRETS_SCAN_OMIT_KEYS = "NEXT_PUBLIC_SUPABASE_ANON_KEY,BANDSINTOWN_APP_ID"
+
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
