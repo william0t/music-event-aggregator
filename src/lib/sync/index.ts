@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { fetchTicketmasterEvents } from './ticketmaster'
-import { fetchBandsintownEventsBatch } from './bandsintown'
-import type { Event, SyncResult, TMEvent, BITEvent } from '@/types'
+import { fetchAllBandsintownVenueEvents } from './bandsintown'
+import type { Event, SyncResult, TMEvent } from '@/types'
 
 function getServiceClient() {
   return createClient(
@@ -163,53 +163,39 @@ async function syncBandsintown(): Promise<SyncResult> {
   const supabase = getServiceClient()
   const result: SyncResult = { source: 'bandsintown', eventsUpserted: 0, eventsSkipped: 0, errors: [] }
 
-  // Get all BIT-strategy venues
+  // Get all BIT-strategy venues — include scrape_url so we can use cached BIT venue IDs
   const { data: venues } = await supabase
     .from('venues')
-    .select('id, name, slug')
+    .select('id, name, slug, scrape_url')
     .eq('scrape_strategy', 'bandsintown')
     .eq('is_active', true)
 
   if (!venues?.length) return result
 
-  // Build a name→id map for fuzzy venue matching
-  const venueNameMap = new Map<string, string>()
-  for (const v of venues) {
-    venueNameMap.set(v.name.toLowerCase(), v.id)
-  }
+  // Fetch events venue-by-venue using the Bandsintown venue search + venue events APIs.
+  // scrape_url stores the BIT venue ID once discovered, so we skip the search on future runs.
+  const venueEvents = await fetchAllBandsintownVenueEvents(venues)
 
-  // Fetch events from BIT using venue names as search terms
-  const allBitEvents = await fetchBandsintownEventsBatch(venues.map((v: { name: string }) => v.name))
+  // Track which venues got a BIT ID for the first time so we can cache it
+  const bitIdDiscoveries = new Map<string, string>() // ourVenueId → bitVenueId
 
-  for (const bitEvent of allBitEvents) {
+  for (const { event: bitEvent, ourVenueId, bitVenueId } of venueEvents) {
+    // Cache newly discovered BIT venue IDs
+    const venue = venues.find(v => v.id === ourVenueId)
+    if (venue && !venue.scrape_url && !bitIdDiscoveries.has(ourVenueId)) {
+      bitIdDiscoveries.set(ourVenueId, bitVenueId)
+    }
+
     try {
-      const venueNameKey = bitEvent.venue?.name?.toLowerCase() ?? ''
-      // Try exact match first, then partial
-      let matchedVenueId = venueNameMap.get(venueNameKey)
-      if (!matchedVenueId) {
-        for (const entry of Array.from(venueNameMap.entries())) {
-          const [key, id] = entry
-          if (venueNameKey.includes(key) || key.includes(venueNameKey)) {
-            matchedVenueId = id
-            break
-          }
-        }
-      }
-
-      if (!matchedVenueId) {
-        result.eventsSkipped++
-        continue
-      }
-
       const eventDate = new Date(bitEvent.datetime)
       const dateStr = eventDate.toISOString().split('T')[0]
       const timeStr = eventDate.toTimeString().split(' ')[0]
 
       const eventToUpsert: Omit<Event, 'id' | 'created_at' | 'updated_at'> = {
-        title: bitEvent.title || bitEvent.artist?.name || bitEvent.lineup[0],
-        artist_name: bitEvent.artist?.name ?? bitEvent.lineup[0] ?? 'Unknown Artist',
-        supporting_acts: bitEvent.lineup.slice(1),
-        venue_id: matchedVenueId,
+        title: bitEvent.title || bitEvent.artist?.name || bitEvent.lineup?.[0] || 'TBA',
+        artist_name: bitEvent.artist?.name ?? bitEvent.lineup?.[0] ?? 'Unknown Artist',
+        supporting_acts: bitEvent.lineup?.slice(1) ?? null,
+        venue_id: ourVenueId,
         event_date: dateStr,
         doors_time: null,
         start_time: timeStr,
@@ -222,7 +208,7 @@ async function syncBandsintown(): Promise<SyncResult> {
         source: 'bandsintown',
         external_id: String(bitEvent.id),
         is_cancelled: false,
-        is_sold_out: false,
+        is_sold_out: bitEvent.offers?.[0]?.status === 'unavailable',
       }
 
       const { error } = await supabase
@@ -237,6 +223,16 @@ async function syncBandsintown(): Promise<SyncResult> {
     } catch (err) {
       result.errors.push(`BIT processing error: ${String(err)}`)
     }
+  }
+
+  // Cache BIT venue IDs back to scrape_url so future syncs skip the search step
+  for (const entry of Array.from(bitIdDiscoveries.entries())) {
+    const [ourVenueId, bitVenueId] = entry
+    await supabase
+      .from('venues')
+      .update({ scrape_url: bitVenueId })
+      .eq('id', ourVenueId)
+      .is('scrape_url', null)
   }
 
   return result
