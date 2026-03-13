@@ -5,7 +5,7 @@ INSERT INTO public.venues (name, slug, neighborhood, capacity, website_url, tick
 VALUES
   ('Ball Arena', 'ball-arena', 'Downtown', 18000, 'https://www.ballarena.com', 'KovZpZA7AAEA', 'ticketmaster', 'Denver', 'CO'),
   ('Fiddler''s Green Amphitheatre', 'fiddlers-green', 'Greenwood Village', 18000, 'https://www.fiddlersgreenamp.com', 'KovZpZAd1aJ', 'ticketmaster', 'Greenwood Village', 'CO'),
-  ('Red Rocks Amphitheatre', 'red-rocks', 'Morrison', 9525, 'https://www.redrocksonline.com', 'KovZpZA7AAEA', 'ticketmaster', 'Morrison', 'CO'),
+  ('Red Rocks Amphitheatre', 'red-rocks', 'Morrison', 9525, 'https://www.redrocksonline.com', 'KovZpZAaFbZA', 'ticketmaster', 'Morrison', 'CO'),
   ('Mission Ballroom', 'mission-ballroom', 'RiNo', 3950, 'https://www.missionballroom.com', 'KovZpaAad1a', 'ticketmaster', 'Denver', 'CO'),
   ('Fillmore Auditorium', 'fillmore', 'Capitol Hill', 3900, 'https://www.fillmoreauditorium.org', 'KovZpZA7vAd', 'ticketmaster', 'Denver', 'CO'),
   ('Paramount Theatre', 'paramount', 'Downtown', 2800, 'https://www.paramountdenver.com', 'KovZpZA7AAd', 'ticketmaster', 'Denver', 'CO'),
