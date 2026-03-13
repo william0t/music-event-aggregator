@@ -1,6 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
 import { fetchTicketmasterEvents } from './ticketmaster'
-import { fetchAllBandsintownVenueEvents } from './bandsintown'
 import type { Event, SyncResult, TMEvent } from '@/types'
 
 function getServiceClient() {
@@ -75,10 +74,16 @@ async function syncTicketmaster(): Promise<SyncResult> {
           // Try exact match first
           matchedVenueId = venueNameMap.get(tmName)
           if (!matchedVenueId) {
-            // Try partial match
+            // Try partial match (substring) then word-overlap for cases like
+            // "Meow Wolf Perplexiplex" ↔ "Meow Wolf Denver"
+            const tmWords = tmName.split(/\s+/).filter(w => w.length > 3)
             for (const entry of Array.from(venueNameMap.entries())) {
               const [key, id] = entry
-              if (tmName.includes(key) || key.includes(tmName)) {
+              const keyWords = key.split(/\s+/).filter(w => w.length > 3)
+              const sharedWords = tmWords.filter(w => keyWords.includes(w))
+              const isSubstring = tmName.includes(key) || key.includes(tmName)
+              const isWordOverlap = sharedWords.length >= 2
+              if (isSubstring || isWordOverlap) {
                 matchedVenueId = id
                 // Save this TM venue ID so we can update it in the DB
                 if (!venueIdMap.has(tmVenue.id)) {
@@ -152,84 +157,12 @@ async function syncTicketmaster(): Promise<SyncResult> {
 }
 
 // ─── BANDSINTOWN SYNC ─────────────────────────────────────────────────────────
+// NOTE: Bandsintown's /venues endpoint requires partner API access (returns 403
+// on public app_id). Small Denver venues that are on Ticketmaster get picked up
+// by the TM sync via venue name matching. Truly indie venues with no TM presence
+// would require direct website scraping (future work).
 
 async function syncBandsintown(): Promise<SyncResult> {
-  const supabase = getServiceClient()
-  const result: SyncResult = { source: 'bandsintown', eventsUpserted: 0, eventsSkipped: 0, errors: [] }
-
-  // Get all BIT-strategy venues — include scrape_url so we can use cached BIT venue IDs
-  const { data: venues } = await supabase
-    .from('venues')
-    .select('id, name, slug, scrape_url')
-    .eq('scrape_strategy', 'bandsintown')
-    .eq('is_active', true)
-
-  console.log(`BIT: found ${venues?.length ?? 0} bandsintown-strategy venues in DB`)
-  if (!venues?.length) return result
-
-  // Fetch events venue-by-venue using the Bandsintown venue search + venue events APIs.
-  // scrape_url stores the BIT venue ID once discovered, so we skip the search on future runs.
-  const venueEvents = await fetchAllBandsintownVenueEvents(venues)
-  console.log(`BIT: fetched ${venueEvents.length} total events across all venues`)
-
-  // Track which venues got a BIT ID for the first time so we can cache it
-  const bitIdDiscoveries = new Map<string, string>() // ourVenueId → bitVenueId
-
-  for (const { event: bitEvent, ourVenueId, bitVenueId } of venueEvents) {
-    // Cache newly discovered BIT venue IDs
-    const venue = venues.find(v => v.id === ourVenueId)
-    if (venue && !venue.scrape_url && !bitIdDiscoveries.has(ourVenueId)) {
-      bitIdDiscoveries.set(ourVenueId, bitVenueId)
-    }
-
-    try {
-      const eventDate = new Date(bitEvent.datetime)
-      const dateStr = eventDate.toISOString().split('T')[0]
-      const timeStr = eventDate.toTimeString().split(' ')[0]
-
-      const eventToUpsert: Omit<Event, 'id' | 'created_at' | 'updated_at'> = {
-        title: bitEvent.title || bitEvent.artist?.name || bitEvent.lineup?.[0] || 'TBA',
-        artist_name: bitEvent.artist?.name ?? bitEvent.lineup?.[0] ?? 'Unknown Artist',
-        supporting_acts: bitEvent.lineup?.slice(1) ?? null,
-        venue_id: ourVenueId,
-        event_date: dateStr,
-        doors_time: null,
-        start_time: timeStr,
-        ticket_url: bitEvent.offers?.[0]?.url ?? null,
-        price_min: null,
-        price_max: null,
-        image_url: bitEvent.artist?.image_url ?? null,
-        description: bitEvent.description ?? null,
-        genre: null,
-        source: 'bandsintown',
-        external_id: String(bitEvent.id),
-        is_cancelled: false,
-        is_sold_out: bitEvent.offers?.[0]?.status === 'unavailable',
-      }
-
-      const { error } = await supabase
-        .from('events')
-        .upsert(eventToUpsert, { onConflict: 'external_id,source' })
-
-      if (error) {
-        result.errors.push(`BIT upsert error for ${bitEvent.id}: ${error.message}`)
-      } else {
-        result.eventsUpserted++
-      }
-    } catch (err) {
-      result.errors.push(`BIT processing error: ${String(err)}`)
-    }
-  }
-
-  // Cache BIT venue IDs back to scrape_url so future syncs skip the search step
-  for (const entry of Array.from(bitIdDiscoveries.entries())) {
-    const [ourVenueId, bitVenueId] = entry
-    await supabase
-      .from('venues')
-      .update({ scrape_url: bitVenueId })
-      .eq('id', ourVenueId)
-      .is('scrape_url', null)
-  }
-
-  return result
+  console.log('BIT: skipping venue sync (requires partner API access — venue name matching in TM sync covers most venues)')
+  return { source: 'bandsintown', eventsUpserted: 0, eventsSkipped: 0, errors: [] }
 }
