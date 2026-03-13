@@ -99,7 +99,9 @@ async function syncTicketmaster(): Promise<SyncResult> {
 
       const attraction = tmEvent._embedded?.attractions?.[0]
       const genre = attraction?.classifications?.[0]?.genre?.name ?? null
-      const image = tmEvent.images?.find((i: { ratio: string; width: number }) => i.ratio === '16_9' && i.width > 500)
+      const image = tmEvent.images?.find((i: { ratio: string; width: number; url: string }) =>
+        i.ratio === '16_9' && i.width > 500 && !i.url.endsWith('_SOURCE')
+      )
       const priceRange = tmEvent.priceRanges?.[0]
 
       const eventToUpsert: Omit<Event, 'id' | 'created_at' | 'updated_at'> = {
