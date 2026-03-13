@@ -162,11 +162,13 @@ async function syncBandsintown(): Promise<SyncResult> {
     .eq('scrape_strategy', 'bandsintown')
     .eq('is_active', true)
 
+  console.log(`BIT: found ${venues?.length ?? 0} bandsintown-strategy venues in DB`)
   if (!venues?.length) return result
 
   // Fetch events venue-by-venue using the Bandsintown venue search + venue events APIs.
   // scrape_url stores the BIT venue ID once discovered, so we skip the search on future runs.
   const venueEvents = await fetchAllBandsintownVenueEvents(venues)
+  console.log(`BIT: fetched ${venueEvents.length} total events across all venues`)
 
   // Track which venues got a BIT ID for the first time so we can cache it
   const bitIdDiscoveries = new Map<string, string>() // ourVenueId → bitVenueId

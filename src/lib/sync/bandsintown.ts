@@ -23,10 +23,14 @@ export async function searchBandsintownVenue(
   if (!appId) throw new Error('BANDSINTOWN_APP_ID not set')
 
   const params = new URLSearchParams({ query: venueName, app_id: appId })
-  const res = await fetch(`${BIT_BASE}/venues?${params}`)
+  const url = `${BIT_BASE}/venues?${params}`
+  console.log(`BIT venue search URL: ${url}`)
+  const res = await fetch(url)
+  console.log(`BIT venue search status for "${venueName}": ${res.status}`)
   if (!res.ok) return null
 
   const data = await res.json()
+  console.log(`BIT venue search raw response for "${venueName}":`, JSON.stringify(data).slice(0, 200))
   if (!Array.isArray(data) || data.length === 0) return null
 
   // Find the best match: same city, name contains our venue name (case-insensitive)
@@ -96,13 +100,18 @@ export async function fetchAllBandsintownVenueEvents(
 ): Promise<{ event: BITEvent; ourVenueId: string; bitVenueId: string }[]> {
   const results: { event: BITEvent; ourVenueId: string; bitVenueId: string }[] = []
 
+  console.log(`BIT: searching for ${venues.length} venues`)
+
   for (const venue of venues) {
     try {
       // Use cached BIT venue ID if we already have it stored in scrape_url
       let bitVenueId: string | null = venue.scrape_url ?? null
+      console.log(`BIT: processing "${venue.name}" (cached ID: ${bitVenueId ?? 'none'})`)
 
       if (!bitVenueId) {
+        console.log(`BIT: searching for venue "${venue.name}"...`)
         bitVenueId = await searchBandsintownVenue(venue.name)
+        console.log(`BIT: search result for "${venue.name}": ${bitVenueId ?? 'NOT FOUND'}`)
         await sleep(100)
       }
 
